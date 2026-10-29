@@ -60,6 +60,7 @@
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
           <span>Log Book</span>
         </button>
+        <button id="signOutBtn" onclick="signOut()" class="hidden ml-1 text-[11px] font-semibold text-[#89a] hover:text-white border border-[#2c3742] rounded-md px-2.5 py-1.5 transition">Sign out</button>
       </div>
     </div>
   </header>
@@ -203,36 +204,156 @@
     </div>
   </div>
 
+  <!-- Owner Sign-In Modal -->
+  <div id="authModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-[#1b2228] border border-[#2c3742] rounded-xl max-w-sm w-full p-6 shadow-2xl relative text-white">
+      <div class="flex items-center justify-between pb-4 border-b border-[#2c3742] mb-5">
+        <h3 class="text-base font-bold text-white tracking-wide">OWNER SIGN IN</h3>
+        <button onclick="closeAuthModal()" class="text-[#678] hover:text-white transition text-lg">×</button>
+      </div>
+      <p class="text-xs text-[#89a] mb-4 leading-relaxed">Anyone can browse this library. Only the owner can log or delete books - sign in with the email and password you created in your Supabase project.</p>
+      <form onsubmit="handleSignIn(event)" class="space-y-4">
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Email</label>
+          <input type="email" id="authEmail" required autocomplete="email" class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#00e054] transition" />
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Password</label>
+          <input type="password" id="authPassword" required autocomplete="current-password" class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#00e054] transition" />
+        </div>
+        <p id="authError" class="hidden text-xs text-red-400"></p>
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-[#2c3742]">
+          <button type="button" onclick="closeAuthModal()" class="px-4 py-2 text-xs font-semibold text-[#89a] hover:text-white transition">Cancel</button>
+          <button type="submit" id="signInBtn" class="px-5 py-2 text-xs font-bold bg-[#00e054] hover:bg-[#00c94b] text-black rounded-md transition shadow">Sign In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     // ----------------------------------------------------
-    // SUPABASE CREDENTIALS & ADMIN PIN
+    // SUPABASE CREDENTIALS
     // ----------------------------------------------------
     const SUPABASE_URL = "https://jjhxazneravqompsnemn.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqaHhhem5lcmF2cW9tcHNuZW1uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMyNDQyNTksImV4cCI6MjEwODgyMDI1OX0.QMWf3G9VfSBbBz6fRSr1lAwaovdTgxX1nOvXaidNAHs";
-    
-    // Set your personal secret PIN here (change if desired)
-    const ADMIN_PIN = "1234";
 
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let books = [];
     let currentView = 'diary';
-    let isAdmin = localStorage.getItem('is_library_admin') === 'true';
+    // True only while a real Supabase Auth session exists.
+    // The old PIN lived in this file, so anyone could read it from the page
+    // source and make themselves "admin". Now logging/deleting books requires
+    // signing in, and Supabase row-level security enforces it on the server.
+    let isAdmin = false;
 
-    // Check admin on Log click
+    // ----------------------------------------------------
+    // SECURITY HELPERS
+    // Every value that comes from the database or an external API goes
+    // through esc() before being placed into HTML, so a stored title,
+    // author, genre or note can never inject markup or scripts (XSS).
+    // ----------------------------------------------------
+    function esc(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Book ids are numbers (Date.now()); strip anything else defensively so an
+    // id is always safe inside an onclick="..." attribute.
+    function safeId(value) {
+      return String(value ?? '').replace(/[^0-9A-Za-z_-]/g, '');
+    }
+
+    // Covers must be https image URLs; anything else falls back to the
+    // generated placeholder cover.
+    function safeCoverSrc(url, fallback) {
+      if (typeof url === 'string' && /^https:\/\//i.test(url)) return esc(url);
+      return fallback;
+    }
+
+    // Placeholder cover URLs are built from the book title and land inside
+    // onerror="this.src='...'" (a single-quoted JS string). encodeURIComponent
+    // leaves apostrophes alone, which would break out of that string, so
+    // percent-encode them here once, in one place.
+    function placeholderCover(width, height, title) {
+      const text = encodeURIComponent(title || 'Book').replace(/'/g, '%27');
+      return `https://images.placeholders.dev/?width=${width}&height=${height}&text=${text}&bgColor=%231c252f&textColor=%2389a`;
+    }
+
+    // ----------------------------------------------------
+    // AUTH (Supabase email + password, owner only)
+    // ----------------------------------------------------
+    async function initAuth() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      isAdmin = !!session;
+      updateAuthUi();
+    }
+
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      isAdmin = !!session;
+      updateAuthUi();
+      renderBooks();
+    });
+
+    function updateAuthUi() {
+      document.getElementById('signOutBtn').classList.toggle('hidden', !isAdmin);
+    }
+
     function handleLogClick() {
       if (isAdmin) {
         openModal();
       } else {
-        const pin = prompt("Enter your Library Admin PIN to log books:");
-        if (pin === ADMIN_PIN) {
-          isAdmin = true;
-          localStorage.setItem('is_library_admin', 'true');
-          openModal();
-        } else if (pin !== null) {
-          alert("Incorrect PIN. Public view only.");
-        }
+        openAuthModal();
       }
+    }
+
+    function openAuthModal() {
+      document.getElementById('authError').classList.add('hidden');
+      document.getElementById('authModal').classList.remove('hidden');
+      document.getElementById('authModal').classList.add('flex');
+      setTimeout(() => document.getElementById('authEmail').focus(), 50);
+    }
+
+    function closeAuthModal() {
+      document.getElementById('authModal').classList.add('hidden');
+      document.getElementById('authModal').classList.remove('flex');
+    }
+
+    async function handleSignIn(e) {
+      e.preventDefault();
+      const btn = document.getElementById('signInBtn');
+      const errEl = document.getElementById('authError');
+      btn.disabled = true;
+      btn.innerText = "Signing in...";
+      errEl.classList.add('hidden');
+
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email: document.getElementById('authEmail').value.trim(),
+        password: document.getElementById('authPassword').value
+      });
+
+      btn.disabled = false;
+      btn.innerText = "Sign In";
+
+      if (error) {
+        errEl.textContent = "Sign in failed: " + error.message;
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      e.target.reset();
+      closeAuthModal();
+      openModal();
+    }
+
+    async function signOut() {
+      await supabaseClient.auth.signOut();
+      closeDetailModal();
+      closeModal();
     }
 
     // Set today's date as default in form
@@ -262,7 +383,7 @@
     function updateStats() {
       const currentYearStr = new Date().getFullYear().toString();
       const readBooks = books.filter(b => b.status === 'Read');
-      
+
       const thisYearCount = readBooks.filter(b => {
         if (!b.read_date) return false;
         return b.read_date.startsWith(currentYearStr);
@@ -286,9 +407,9 @@
         }
       });
       const sortedYears = Array.from(yearsSet).sort((a,b) => b.localeCompare(a));
-      
+
       const currentValYear = yearSelect.value;
-      yearSelect.innerHTML = '<option value="all">All Years</option>' + sortedYears.map(y => `<option value="${y}">${y}</option>`).join('');
+      yearSelect.innerHTML = '<option value="all">All Years</option>' + sortedYears.map(y => `<option value="${esc(y)}">${esc(y)}</option>`).join('');
       if (sortedYears.includes(currentValYear)) yearSelect.value = currentValYear;
 
       // Populate Genres
@@ -298,7 +419,7 @@
       });
       const sortedGenres = Array.from(genresSet).sort();
       const currentValGenre = genreSelect.value;
-      genreSelect.innerHTML = '<option value="all">All Genres</option>' + sortedGenres.map(g => `<option value="${g}">${g}</option>`).join('');
+      genreSelect.innerHTML = '<option value="all">All Genres</option>' + sortedGenres.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
       if (genresSet.has(currentValGenre)) genreSelect.value = currentValGenre;
     }
 
@@ -306,7 +427,7 @@
       currentView = mode;
       const diaryBtn = document.getElementById('viewDiaryBtn');
       const gridBtn = document.getElementById('viewGridBtn');
-      
+
       if (mode === 'diary') {
         diaryBtn.className = "px-2.5 py-1 text-xs rounded font-medium bg-[#2c3742] text-white transition";
         gridBtn.className = "px-2.5 py-1 text-xs rounded font-medium text-[#678] hover:text-white transition";
@@ -378,32 +499,32 @@
       for (const [monthYear, items] of Object.entries(groups)) {
         html += `
           <div>
-            <h2 class="text-xs font-bold tracking-widest text-[#718290] uppercase pb-2 border-b border-[#242c34] mb-3">${monthYear}</h2>
+            <h2 class="text-xs font-bold tracking-widest text-[#718290] uppercase pb-2 border-b border-[#242c34] mb-3">${esc(monthYear)}</h2>
             <div class="divide-y divide-[#202830]">
               ${items.map(b => {
                 const dayNum = b.read_date ? parseInt(b.read_date.split('-')[2], 10) : '—';
-                const defaultCover = `https://images.placeholders.dev/?width=120&height=180&text=${encodeURIComponent(b.title)}&bgColor=%231c252f&textColor=%2389a`;
-                const cover = b.cover_url || defaultCover;
+                const defaultCover = placeholderCover(120, 180, b.title);
+                const cover = safeCoverSrc(b.cover_url, defaultCover);
                 return `
-                  <div onclick="showDetails('${b.id}')" class="py-3 flex items-center justify-between group hover:bg-[#182026] px-2 rounded-lg cursor-pointer transition">
+                  <div onclick="showDetails('${safeId(b.id)}')" class="py-3 flex items-center justify-between group hover:bg-[#182026] px-2 rounded-lg cursor-pointer transition">
                     <div class="flex items-center gap-4">
                       <!-- Day Box -->
                       <div class="w-10 h-10 rounded border border-[#2b3540] bg-[#171e24] flex items-center justify-center font-bold text-sm text-[#89a] group-hover:text-white transition">
                         ${dayNum}
                       </div>
-                      
+
                       <!-- Thumbnail Poster -->
                       <div class="w-9 h-13 flex-shrink-0 rounded overflow-hidden shadow border border-[#2b3540]/60 bg-[#161d23]">
-                        <img src="${cover}" alt="${b.title}" class="w-full h-full object-cover" onerror="this.src='${defaultCover}'" />
+                        <img src="${cover}" alt="${esc(b.title)}" class="w-full h-full object-cover" onerror="this.src='${defaultCover}'" />
                       </div>
 
                       <!-- Title & Subtitle -->
                       <div>
                         <div class="flex items-center gap-2">
-                          <span class="text-sm font-bold text-white group-hover:text-[#00e054] transition">${b.title}</span>
-                          ${b.pub_year ? `<span class="text-xs text-[#678]">${b.pub_year}</span>` : ''}
+                          <span class="text-sm font-bold text-white group-hover:text-[#00e054] transition">${esc(b.title)}</span>
+                          ${b.pub_year ? `<span class="text-xs text-[#678]">${esc(b.pub_year)}</span>` : ''}
                         </div>
-                        <p class="text-xs text-[#718290]">${b.author || 'Unknown Author'}</p>
+                        <p class="text-xs text-[#718290]">${esc(b.author || 'Unknown Author')}</p>
                       </div>
                     </div>
 
@@ -415,7 +536,7 @@
                         </span>
                       ` : ''}
                       <span class="text-[11px] font-medium px-2 py-0.5 rounded border border-[#2c3742] bg-[#14181c] text-[#789]">
-                        ${b.status}
+                        ${esc(b.status)}
                       </span>
                     </div>
                   </div>
@@ -430,45 +551,45 @@
 
     function renderGridView(bookList, container) {
       container.innerHTML = bookList.map(b => {
-        const defaultCover = `https://images.placeholders.dev/?width=180&height=270&text=${encodeURIComponent(b.title)}&bgColor=%231c252f&textColor=%2389a`;
-        const cover = b.cover_url || defaultCover;
+        const defaultCover = placeholderCover(180, 270, b.title);
+        const cover = safeCoverSrc(b.cover_url, defaultCover);
         return `
-          <div onclick="showDetails('${b.id}')" class="group cursor-pointer">
+          <div onclick="showDetails('${safeId(b.id)}')" class="group cursor-pointer">
             <div class="aspect-[2/3] w-full rounded-md overflow-hidden bg-[#182026] border border-[#2b3540] group-hover:border-[#00e054] transition relative shadow-lg">
-              <img src="${cover}" alt="${b.title}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src='${defaultCover}'" />
+              <img src="${cover}" alt="${esc(b.title)}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src='${defaultCover}'" />
               <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent opacity-0 group-hover:opacity-100 transition p-2.5 flex flex-col justify-end">
-                <span class="text-[10px] uppercase font-bold text-[#00e054] tracking-wider">${b.genre || b.status}</span>
-                <p class="text-xs font-bold text-white line-clamp-1">${b.title}</p>
-                <p class="text-[11px] text-[#89a] line-clamp-1">${b.author}</p>
+                <span class="text-[10px] uppercase font-bold text-[#00e054] tracking-wider">${esc(b.genre || b.status)}</span>
+                <p class="text-xs font-bold text-white line-clamp-1">${esc(b.title)}</p>
+                <p class="text-[11px] text-[#89a] line-clamp-1">${esc(b.author)}</p>
               </div>
             </div>
-            <p class="text-xs font-semibold text-white mt-1.5 line-clamp-1 group-hover:text-[#00e054] transition">${b.title}</p>
-            <p class="text-[11px] text-[#678] line-clamp-1">${b.author}</p>
+            <p class="text-xs font-semibold text-white mt-1.5 line-clamp-1 group-hover:text-[#00e054] transition">${esc(b.title)}</p>
+            <p class="text-[11px] text-[#678] line-clamp-1">${esc(b.author)}</p>
           </div>
         `;
       }).join('');
     }
 
     function showDetails(id) {
-      const b = books.find(x => x.id === id);
+      const b = books.find(x => String(x.id) === String(id));
       if (!b) return;
 
-      const defaultCover = `https://images.placeholders.dev/?width=200&height=300&text=${encodeURIComponent(b.title)}&bgColor=%231c252f&textColor=%2389a`;
-      const cover = b.cover_url || defaultCover;
+      const defaultCover = placeholderCover(200, 300, b.title);
+      const cover = safeCoverSrc(b.cover_url, defaultCover);
 
       const detailEl = document.getElementById('detailContent');
       detailEl.innerHTML = `
         <div class="flex gap-4">
           <div class="w-24 h-36 flex-shrink-0 rounded overflow-hidden border border-[#2c3742] bg-[#14181c]">
-            <img src="${cover}" alt="${b.title}" class="w-full h-full object-cover" onerror="this.src='${defaultCover}'" />
+            <img src="${cover}" alt="${esc(b.title)}" class="w-full h-full object-cover" onerror="this.src='${defaultCover}'" />
           </div>
           <div class="flex-1">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-[#00e054] bg-[#00e054]/10 px-2 py-0.5 rounded border border-[#00e054]/20">${b.genre || 'General'}</span>
-            <h3 class="text-lg font-bold text-white mt-1.5 leading-snug">${b.title}</h3>
-            <p class="text-xs text-[#89a] mb-2">${b.author || 'Unknown'} ${b.pub_year ? `(${b.pub_year})` : ''}</p>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-[#00e054] bg-[#00e054]/10 px-2 py-0.5 rounded border border-[#00e054]/20">${esc(b.genre || 'General')}</span>
+            <h3 class="text-lg font-bold text-white mt-1.5 leading-snug">${esc(b.title)}</h3>
+            <p class="text-xs text-[#89a] mb-2">${esc(b.author || 'Unknown')} ${b.pub_year ? `(${esc(b.pub_year)})` : ''}</p>
             <div class="text-[11px] text-[#678] space-y-0.5">
-              <p>Status: <span class="text-white">${b.status}</span></p>
-              ${b.read_date ? `<p>Completed: <span class="text-white">${b.read_date}</span></p>` : ''}
+              <p>Status: <span class="text-white">${esc(b.status)}</span></p>
+              ${b.read_date ? `<p>Completed: <span class="text-white">${esc(b.read_date)}</span></p>` : ''}
             </div>
           </div>
         </div>
@@ -476,13 +597,13 @@
         ${b.notes ? `
           <div class="mt-4 pt-3 border-t border-[#2c3742]">
             <p class="text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1">Notes & Takeaways</p>
-            <p class="text-xs text-[#bcd] italic bg-[#14181c] p-3 rounded border border-[#242c34] leading-relaxed">"${b.notes}"</p>
+            <p class="text-xs text-[#bcd] italic bg-[#14181c] p-3 rounded border border-[#242c34] leading-relaxed">"${esc(b.notes)}"</p>
           </div>
         ` : ''}
 
         ${isAdmin ? `
           <div class="mt-5 pt-3 border-t border-[#2c3742] flex justify-end">
-            <button onclick="deleteBook('${b.id}')" class="text-xs text-red-400 hover:text-red-300 font-semibold transition flex items-center gap-1">
+            <button onclick="deleteBook('${safeId(b.id)}')" class="text-xs text-red-400 hover:text-red-300 font-semibold transition flex items-center gap-1">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               Delete Entry
             </button>
@@ -532,6 +653,7 @@
 
     // Open Library Live Auto-search
     let searchDebounce;
+    let apiResults = [];
     function handleSearchApi(val) {
       clearTimeout(searchDebounce);
       const resultsBox = document.getElementById('apiSearchResults');
@@ -545,20 +667,20 @@
           const res = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(val)}&limit=5`);
           const data = await res.json();
           if (data.docs && data.docs.length > 0) {
-            resultsBox.innerHTML = data.docs.map(item => {
+            apiResults = data.docs;
+            resultsBox.innerHTML = data.docs.map((item, i) => {
               const coverId = item.cover_i;
               const imgUrl = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg` : '';
               const author = item.author_name ? item.author_name[0] : 'Unknown';
               const pubYear = item.first_publish_year || '';
-              const genre = item.subject ? item.subject[0] : '';
               return `
-                <div onclick="selectApiBook('${encodeURIComponent(item.title)}', '${encodeURIComponent(author)}', '${pubYear}', '${encodeURIComponent(genre)}', '${imgUrl}')" class="p-2.5 hover:bg-[#1f2730] flex items-center gap-3 cursor-pointer transition">
+                <div onclick="selectApiBook(${i})" class="p-2.5 hover:bg-[#1f2730] flex items-center gap-3 cursor-pointer transition">
                   <div class="w-7 h-10 bg-[#242c34] rounded flex-shrink-0 overflow-hidden">
-                    ${imgUrl ? `<img src="${imgUrl}" class="w-full h-full object-cover"/>` : ''}
+                    ${imgUrl ? `<img src="${esc(imgUrl)}" class="w-full h-full object-cover"/>` : ''}
                   </div>
                   <div>
-                    <p class="text-xs font-bold text-white">${item.title}</p>
-                    <p class="text-[11px] text-[#789]">${author} ${pubYear ? `• ${pubYear}` : ''}</p>
+                    <p class="text-xs font-bold text-white">${esc(item.title)}</p>
+                    <p class="text-[11px] text-[#789]">${esc(author)} ${pubYear ? `• ${esc(pubYear)}` : ''}</p>
                   </div>
                 </div>
               `;
@@ -573,12 +695,16 @@
       }, 350);
     }
 
-    function selectApiBook(title, author, pubYear, genre, coverUrl) {
-      document.getElementById('formTitle').value = decodeURIComponent(title);
-      document.getElementById('formAuthor').value = decodeURIComponent(author);
-      document.getElementById('formPubYear').value = pubYear;
-      document.getElementById('formGenre').value = decodeURIComponent(genre);
-      document.getElementById('formCoverUrl').value = coverUrl;
+    // i is just the row number, so no API text ever lands inside onclick="...".
+    function selectApiBook(i) {
+      const item = apiResults[i];
+      if (!item) return;
+      const coverId = item.cover_i;
+      document.getElementById('formTitle').value = item.title || '';
+      document.getElementById('formAuthor').value = item.author_name ? item.author_name[0] : '';
+      document.getElementById('formPubYear').value = item.first_publish_year || '';
+      document.getElementById('formGenre').value = item.subject ? item.subject[0] : '';
+      document.getElementById('formCoverUrl').value = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg` : '';
       document.getElementById('apiSearchResults').classList.add('hidden');
     }
 
@@ -616,6 +742,7 @@
     }
 
     // Initial Load
+    initAuth();
     fetchBooks();
   </script>
 </body>
