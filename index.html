@@ -56,7 +56,7 @@
           <span id="statThisYear" class="block font-bold text-[#00e054] text-base leading-none">0</span>
           <span class="text-[10px] uppercase tracking-wider text-[#678] font-medium">This Year</span>
         </div>
-        <button onclick="handleLogClick()" class="ml-2 flex items-center gap-1.5 bg-[#00e054] hover:bg-[#00c94b] text-black font-semibold text-xs px-3.5 py-1.5 rounded-md transition shadow-md shadow-[#00e054]/10 active:scale-95">
+        <button id="logBookBtn" onclick="handleLogClick()" class="hidden ml-2 items-center gap-1.5 bg-[#00e054] hover:bg-[#00c94b] text-black font-semibold text-xs px-3.5 py-1.5 rounded-md transition shadow-md shadow-[#00e054]/10 active:scale-95">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
           <span>Log Book</span>
         </button>
@@ -299,7 +299,18 @@
       renderBooks();
     });
 
+    // Owner entry point: the Log Book button appears only when this browser
+    // is signed in as the owner, or when the URL contains ?add - the owner's
+    // private way in. Everyone else gets a clean read-only shelf: no login,
+    // no add UI. After the first sign-in the session persists, so the owner
+    // sees the buttons on normal visits too; Sign out returns to the clean shelf.
+    const ownerEntryRequested = new URLSearchParams(window.location.search).has('add');
+
     function updateAuthUi() {
+      const logBtn = document.getElementById('logBookBtn');
+      const showEntry = isAdmin || ownerEntryRequested;
+      logBtn.classList.toggle('hidden', !showEntry);
+      logBtn.classList.toggle('flex', showEntry);
       document.getElementById('signOutBtn').classList.toggle('hidden', !isAdmin);
     }
 
