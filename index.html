@@ -85,10 +85,6 @@
           <option value="Want to Read">Want to Read</option>
         </select>
 
-        <!-- Genre Filter -->
-        <select id="filterGenre" onchange="renderBooks()" class="bg-[#1c242c] border border-[#2c3742] text-white text-xs rounded-md px-3 py-1.5 focus:outline-none focus:border-[#00e054] transition">
-          <option value="all">All Genres</option>
-        </select>
       </div>
 
       <!-- View Switcher & Search -->
@@ -276,6 +272,32 @@
       return fallback;
     }
 
+    // Open Library subjects are library-catalog labels ("Psychological aspects
+    // of Money"), not tidy genres. First matching rule in subject order wins;
+    // anything unrecognized stays General, and the field remains editable.
+    const GENRE_RULES = [
+      [/biograph|memoir|autobiograph/, 'Biography'],
+      [/\bhistory\b|world war|civilization|ancient|medieval|holocaust|nazi/, 'History'],
+      [/psych|mental|cogniti|behavior|brain|mindful/, 'Psychology'],
+      [/invest|financ|money|securit|stock|econom|wealth|accounting|banking|trading/, 'Finance'],
+      [/business|entrepreneur|management|leadership|marketing|commerce/, 'Business'],
+      [/self-?help|self improvement|personal growth|success|motivat|productiv|habit|happiness/, 'Self-help'],
+      [/philosoph|ethic|stoic|meaning of life/, 'Philosophy'],
+      [/science|physic|biolog|chemist|mathematic|evolution|astronom|space/, 'Science'],
+      [/technolog|computer|programming|software|internet|artificial intelligence|\bdata\b/, 'Technology'],
+      [/health|medicin|fitness|\bdiet\b|nutrition|exercise|yoga|aging/, 'Health'],
+      [/relig|spiritual|hindu|buddhis|christian|islam|meditation/, 'Spirituality'],
+      [/fiction|novel|literature|literary|romance|thriller|mystery|fantasy|drama|poetry|poems|short stories|comic|juvenile|horror|dystopia|satire|fables?\b|dragons|magic|supernatural|ghosts|witches|vampires/, 'Fiction']
+    ];
+    function mapGenre(subjects) {
+      if (!Array.isArray(subjects)) return 'General';
+      for (const sub of subjects) {
+        const t = String(sub).toLowerCase();
+        for (const [re, g] of GENRE_RULES) if (re.test(t)) return g;
+      }
+      return 'General';
+    }
+
     // Placeholder cover URLs are built from the book title and land inside
     // onerror="this.src='...'" (a single-quoted JS string). encodeURIComponent
     // leaves apostrophes alone, which would break out of that string, so
@@ -407,7 +429,6 @@
 
     function populateFilters() {
       const yearSelect = document.getElementById('filterYear');
-      const genreSelect = document.getElementById('filterGenre');
 
       // Populate Years (Dynamic >= 2025 + any older or newer present)
       const currentYear = new Date().getFullYear();
@@ -424,15 +445,6 @@
       yearSelect.innerHTML = '<option value="all">All Years</option>' + sortedYears.map(y => `<option value="${esc(y)}">${esc(y)}</option>`).join('');
       if (sortedYears.includes(currentValYear)) yearSelect.value = currentValYear;
 
-      // Populate Genres
-      const genresSet = new Set();
-      books.forEach(b => {
-        if (b.genre) genresSet.add(b.genre.trim());
-      });
-      const sortedGenres = Array.from(genresSet).sort();
-      const currentValGenre = genreSelect.value;
-      genreSelect.innerHTML = '<option value="all">All Genres</option>' + sortedGenres.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
-      if (genresSet.has(currentValGenre)) genreSelect.value = currentValGenre;
     }
 
     function setViewMode(mode) {
@@ -453,12 +465,10 @@
     function renderBooks() {
       const selectedYear = document.getElementById('filterYear').value;
       const selectedStatus = document.getElementById('filterStatus').value;
-      const selectedGenre = document.getElementById('filterGenre').value;
       const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
 
       const filtered = books.filter(b => {
         if (selectedStatus !== 'all' && b.status !== selectedStatus) return false;
-        if (selectedGenre !== 'all' && b.genre !== selectedGenre) return false;
         if (selectedYear !== 'all') {
           if (!b.read_date || !b.read_date.startsWith(selectedYear)) return false;
         }
@@ -540,12 +550,6 @@
                       </div>
                     </div>
 
-                    <!-- Review indicator -->
-                    ${b.notes ? `
-                      <span class="text-[#00e054] text-xs" title="Has Review">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
-                      </span>
-                    ` : ''}
                   </div>
                 `;
               }).join('')}
@@ -703,7 +707,7 @@
 
       searchDebounce = setTimeout(async () => {
         try {
-          const res = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(val)}&limit=5`);
+          const res = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(val)}&limit=5&fields=title,author_name,cover_i,first_publish_year,subject`);
           const data = await res.json();
           if (data.docs && data.docs.length > 0) {
             apiResults = data.docs;
@@ -742,7 +746,7 @@
       document.getElementById('formTitle').value = item.title || '';
       document.getElementById('formAuthor').value = item.author_name ? item.author_name[0] : '';
       document.getElementById('formPubYear').value = item.first_publish_year || '';
-      document.getElementById('formGenre').value = item.subject ? item.subject[0] : '';
+      document.getElementById('formGenre').value = mapGenre(item.subject);
       document.getElementById('formCoverUrl').value = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg` : '';
       document.getElementById('apiSearchResults').classList.add('hidden');
     }
