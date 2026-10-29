@@ -47,18 +47,17 @@
       </div>
 
       <!-- Quick Stats -->
-      <div class="flex items-center gap-6 text-xs">
-        <div class="text-center">
+      <div class="flex items-center gap-5 text-xs">
+        <div class="flex flex-col items-center min-w-[2.75rem]">
           <span id="statLogged" class="block font-bold text-white text-base leading-none">0</span>
-          <span class="text-[10px] uppercase tracking-wider text-[#678] font-medium">Logged</span>
+          <span class="block text-[10px] uppercase tracking-wider text-[#678] font-medium leading-none mt-1">Read</span>
         </div>
-        <div class="text-center">
+        <div class="flex flex-col items-center min-w-[2.75rem]">
           <span id="statThisYear" class="block font-bold text-[#00e054] text-base leading-none">0</span>
-          <span class="text-[10px] uppercase tracking-wider text-[#678] font-medium">This Year</span>
+          <span class="block text-[10px] uppercase tracking-wider text-[#678] font-medium leading-none mt-1">This Year</span>
         </div>
-        <button id="logBookBtn" onclick="handleLogClick()" class="hidden ml-2 items-center gap-1.5 bg-[#00e054] hover:bg-[#00c94b] text-black font-semibold text-xs px-3.5 py-1.5 rounded-md transition shadow-md shadow-[#00e054]/10 active:scale-95">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
-          <span>Log Book</span>
+        <button id="logBookBtn" onclick="handleLogClick()" aria-label="Log a book" title="Log a book" class="hidden ml-1 w-8 h-8 items-center justify-center bg-[#00e054] hover:bg-[#00c94b] text-black rounded-md transition shadow-md shadow-[#00e054]/10 active:scale-95">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
         </button>
         <button id="signOutBtn" onclick="signOut()" class="hidden ml-1 text-[11px] font-semibold text-[#89a] hover:text-white border border-[#2c3742] rounded-md px-2.5 py-1.5 transition">Sign out</button>
       </div>
@@ -134,7 +133,7 @@
     <div class="bg-[#1b2228] border border-[#2c3742] rounded-xl max-w-lg w-full p-6 shadow-2xl relative text-white">
       
       <div class="flex items-center justify-between pb-4 border-b border-[#2c3742] mb-5">
-        <h3 class="text-base font-bold text-white tracking-wide">LOG A BOOK</h3>
+        <h3 id="bookModalTitle" class="text-base font-bold text-white tracking-wide">LOG A BOOK</h3>
         <button onclick="closeModal()" class="text-[#678] hover:text-white transition text-lg">×</button>
       </div>
 
@@ -241,6 +240,8 @@
 
     let books = [];
     let currentView = 'diary';
+    // Set while the owner is editing an existing book; null means the form adds a new one.
+    let editingId = null;
     // True only while a real Supabase Auth session exists.
     // The old PIN lived in this file, so anyone could read it from the page
     // source and make themselves "admin". Now logging/deleting books requires
@@ -539,17 +540,12 @@
                       </div>
                     </div>
 
-                    <!-- Right Metadata Tag -->
-                    <div class="flex items-center gap-3">
-                      ${b.notes ? `
-                        <span class="text-[#00e054] text-xs" title="Has Review">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
-                        </span>
-                      ` : ''}
-                      <span class="text-[11px] font-medium px-2 py-0.5 rounded border border-[#2c3742] bg-[#14181c] text-[#789]">
-                        ${esc(b.status)}
+                    <!-- Review indicator -->
+                    ${b.notes ? `
+                      <span class="text-[#00e054] text-xs" title="Has Review">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
                       </span>
-                    </div>
+                    ` : ''}
                   </div>
                 `;
               }).join('')}
@@ -613,7 +609,11 @@
         ` : ''}
 
         ${isAdmin ? `
-          <div class="mt-5 pt-3 border-t border-[#2c3742] flex justify-end">
+          <div class="mt-5 pt-3 border-t border-[#2c3742] flex justify-end gap-4">
+            <button onclick="openEditModal('${safeId(b.id)}')" class="text-xs text-[#89a] hover:text-white font-semibold transition flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              Edit
+            </button>
             <button onclick="deleteBook('${safeId(b.id)}')" class="text-xs text-red-400 hover:text-red-300 font-semibold transition flex items-center gap-1">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               Delete Entry
@@ -630,6 +630,27 @@
       document.getElementById('detailModal').classList.remove('flex');
     }
 
+    // Owner-only: open the same modal pre-filled, saving updates instead of adding.
+    function openEditModal(id) {
+      const b = books.find(x => String(x.id) === String(id));
+      if (!b || !isAdmin) return;
+      editingId = b.id;
+      closeDetailModal();
+      document.getElementById('bookModalTitle').innerText = 'EDIT BOOK';
+      document.getElementById('saveBookBtn').innerText = 'Save Changes';
+      document.getElementById('formTitle').value = b.title || '';
+      document.getElementById('formAuthor').value = b.author || '';
+      document.getElementById('formPubYear').value = b.pub_year || '';
+      document.getElementById('formGenre').value = b.genre || '';
+      document.getElementById('formStatus').value = b.status || 'Read';
+      document.getElementById('formReadDate').value = b.read_date || '';
+      document.getElementById('formCoverUrl').value = b.cover_url || '';
+      document.getElementById('formNotes').value = b.notes || '';
+      toggleDateField();
+      document.getElementById('bookModal').classList.remove('hidden');
+      document.getElementById('bookModal').classList.add('flex');
+    }
+
     async function deleteBook(id) {
       if (!confirm("Are you sure you want to remove this book?")) return;
       const { error } = await supabaseClient.from('books').delete().eq('id', id);
@@ -642,11 +663,18 @@
     }
 
     function openModal() {
+      editingId = null;
+      document.getElementById('bookForm').reset();
+      document.getElementById('formReadDate').value = new Date().toISOString().split('T')[0];
+      document.getElementById('bookModalTitle').innerText = 'LOG A BOOK';
+      document.getElementById('saveBookBtn').innerText = 'Save Book';
+      toggleDateField();
       document.getElementById('bookModal').classList.remove('hidden');
       document.getElementById('bookModal').classList.add('flex');
     }
 
     function closeModal() {
+      editingId = null;
       document.getElementById('bookModal').classList.add('hidden');
       document.getElementById('bookModal').classList.remove('flex');
       document.getElementById('apiSearchResults').classList.add('hidden');
@@ -737,15 +765,22 @@
         notes: document.getElementById('formNotes').value.trim()
       };
 
-      const { error } = await supabaseClient.from('books').insert([newBook]);
+      let error;
+      if (editingId !== null) {
+        const { id, ...updates } = newBook;
+        ({ error } = await supabaseClient.from('books').update(updates).eq('id', editingId));
+      } else {
+        ({ error } = await supabaseClient.from('books').insert([newBook]));
+      }
       saveBtn.disabled = false;
-      saveBtn.innerText = "Save Book";
+      saveBtn.innerText = editingId !== null ? "Save Changes" : "Save Book";
 
       if (error) {
         alert("Failed to save to Supabase: " + error.message);
         return;
       }
 
+      editingId = null;
       e.target.reset();
       document.getElementById('formReadDate').value = new Date().toISOString().split('T')[0];
       closeModal();
