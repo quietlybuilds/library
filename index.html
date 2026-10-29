@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Library</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #14181c;
+      color: #9ab;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #14181c;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #2c3440;
+      border-radius: 4px;
+    }
+    .letterboxd-green {
+      color: #00e054;
+    }
+    .bg-letterboxd-green {
+      background-color: #00e054;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-[#00e054] selection:text-black">
+
+  <!-- Top Navigation Bar -->
+  <header class="border-b border-[#242c34] bg-[#14181c]/90 sticky top-0 z-30 backdrop-blur-md">
+    <div class="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-extrabold tracking-wider text-white">LIBRARY</h1>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="flex items-center gap-6 text-xs">
+        <div class="text-center">
+          <span id="statLogged" class="block font-bold text-white text-base leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-wider text-[#678] font-medium">Logged</span>
+        </div>
+        <div class="text-center">
+          <span id="statThisYear" class="block font-bold text-[#00e054] text-base leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-wider text-[#678] font-medium">This Year</span>
+        </div>
+        <button onclick="handleLogClick()" class="ml-2 flex items-center gap-1.5 bg-[#00e054] hover:bg-[#00c94b] text-black font-semibold text-xs px-3.5 py-1.5 rounded-md transition shadow-md shadow-[#00e054]/10 active:scale-95">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+          <span>Log Book</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="max-w-4xl mx-auto px-4 py-8 flex-1 w-full">
+    
+    <!-- Controls Bar -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#242c34] mb-8">
+      
+      <!-- Filters -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <!-- Year Filter -->
+        <select id="filterYear" onchange="renderBooks()" class="bg-[#1c242c] border border-[#2c3742] text-white text-xs rounded-md px-3 py-1.5 focus:outline-none focus:border-[#00e054] transition">
+          <option value="all">All Years</option>
+        </select>
+
+        <!-- Status Filter -->
+        <select id="filterStatus" onchange="renderBooks()" class="bg-[#1c242c] border border-[#2c3742] text-white text-xs rounded-md px-3 py-1.5 focus:outline-none focus:border-[#00e054] transition">
+          <option value="all">All Shelves</option>
+          <option value="Read">Read</option>
+          <option value="Currently Reading">Currently Reading</option>
+          <option value="Want to Read">Want to Read</option>
+        </select>
+
+        <!-- Genre Filter -->
+        <select id="filterGenre" onchange="renderBooks()" class="bg-[#1c242c] border border-[#2c3742] text-white text-xs rounded-md px-3 py-1.5 focus:outline-none focus:border-[#00e054] transition">
+          <option value="all">All Genres</option>
+        </select>
+      </div>
+
+      <!-- View Switcher & Search -->
+      <div class="flex items-center gap-3">
+        <div class="relative">
+          <input type="text" id="searchInput" oninput="renderBooks()" placeholder="Search library..." class="bg-[#1c242c] border border-[#2c3742] text-white text-xs rounded-md pl-8 pr-3 py-1.5 focus:outline-none focus:border-[#00e054] w-36 sm:w-48 transition" />
+          <svg class="w-3.5 h-3.5 text-[#678] absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+
+        <div class="flex items-center bg-[#1c242c] border border-[#2c3742] rounded-md p-0.5">
+          <button id="viewDiaryBtn" onclick="setViewMode('diary')" class="px-2.5 py-1 text-xs rounded font-medium bg-[#2c3742] text-white transition">Diary</button>
+          <button id="viewGridBtn" onclick="setViewMode('grid')" class="px-2.5 py-1 text-xs rounded font-medium text-[#678] hover:text-white transition">Grid</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loadingIndicator" class="py-20 text-center">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-2 border-[#2c3742] border-t-[#00e054]"></div>
+      <p class="text-xs uppercase tracking-widest text-[#678] mt-3">Syncing with library...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="hidden py-24 text-center">
+      <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-[#1c242c] border border-[#2c3742] flex items-center justify-center text-[#678]">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+      </div>
+      <h3 class="text-white text-sm font-semibold mb-1">No books found</h3>
+      <p class="text-xs text-[#678]">Change your search or add a new title above.</p>
+    </div>
+
+    <!-- Diary List View Container -->
+    <div id="diaryContainer" class="space-y-8 hidden"></div>
+
+    <!-- Grid View Container -->
+    <div id="gridContainer" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-4 hidden"></div>
+
+  </main>
+
+  <!-- Add Book Modal -->
+  <div id="bookModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-[#1b2228] border border-[#2c3742] rounded-xl max-w-lg w-full p-6 shadow-2xl relative text-white">
+      
+      <div class="flex items-center justify-between pb-4 border-b border-[#2c3742] mb-5">
+        <h3 class="text-base font-bold text-white tracking-wide">LOG A BOOK</h3>
+        <button onclick="closeModal()" class="text-[#678] hover:text-white transition text-lg">×</button>
+      </div>
+
+      <form id="bookForm" onsubmit="handleFormSubmit(event)" class="space-y-4">
+        <!-- Live OpenLibrary Search -->
+        <div class="relative">
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Search or Type Title</label>
+          <input type="text" id="formTitle" required placeholder="e.g. The Psychology of Money" autocomplete="off" oninput="handleSearchApi(this.value)" class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-[#00e054] transition" />
+          <div id="apiSearchResults" class="absolute left-0 right-0 top-full mt-1 bg-[#14181c] border border-[#2c3742] rounded-md shadow-xl z-20 max-h-56 overflow-y-auto hidden divide-y divide-[#242c34]"></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Author</label>
+            <input type="text" id="formAuthor" required placeholder="e.g. Morgan Housel" class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00e054] transition" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Release Year</label>
+            <input type="text" id="formPubYear" placeholder="e.g. 2020" class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00e054] transition" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Shelf Status</label>
+            <select id="formStatus" onchange="toggleDateField()" class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00e054] transition">
+              <option value="Read">Read</option>
+              <option value="Currently Reading">Currently Reading</option>
+              <option value="Want to Read">Want to Read</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Genre</label>
+            <input type="text" id="formGenre" placeholder="e.g. Finance, Sci-Fi" class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00e054] transition" />
+          </div>
+        </div>
+
+        <div id="dateFieldContainer" class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Date Read</label>
+            <input type="date" id="formReadDate" class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00e054] transition" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Cover URL (optional)</label>
+            <input type="url" id="formCoverUrl" placeholder="https://..." class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00e054] transition" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1.5">Review / Reflection (optional)</label>
+          <textarea id="formNotes" rows="3" placeholder="Core ideas, favorite quotes, or takeaways..." class="w-full bg-[#14181c] border border-[#2c3742] rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00e054] transition"></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-[#2c3742]">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs font-semibold text-[#89a] hover:text-white transition">Cancel</button>
+          <button type="submit" id="saveBookBtn" class="px-5 py-2 text-xs font-bold bg-[#00e054] hover:bg-[#00c94b] text-black rounded-md transition shadow">Save Book</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="detailModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-[#1b2228] border border-[#2c3742] rounded-xl max-w-md w-full p-6 shadow-2xl relative text-white">
+      <button onclick="closeDetailModal()" class="absolute top-4 right-4 text-[#678] hover:text-white text-lg">×</button>
+      <div id="detailContent"></div>
+    </div>
+  </div>
+
+  <script>
+    // ----------------------------------------------------
+    // SUPABASE CREDENTIALS & ADMIN PIN
+    // ----------------------------------------------------
+    const SUPABASE_URL = "https://jjhxazneravqompsnemn.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqaHhhem5lcmF2cW9tcHNuZW1uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMyNDQyNTksImV4cCI6MjEwODgyMDI1OX0.QMWf3G9VfSBbBz6fRSr1lAwaovdTgxX1nOvXaidNAHs";
+    
+    // Set your personal secret PIN here (change if desired)
+    const ADMIN_PIN = "1234";
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let books = [];
+    let currentView = 'diary';
+    let isAdmin = localStorage.getItem('is_library_admin') === 'true';
+
+    // Check admin on Log click
+    function handleLogClick() {
+      if (isAdmin) {
+        openModal();
+      } else {
+        const pin = prompt("Enter your Library Admin PIN to log books:");
+        if (pin === ADMIN_PIN) {
+          isAdmin = true;
+          localStorage.setItem('is_library_admin', 'true');
+          openModal();
+        } else if (pin !== null) {
+          alert("Incorrect PIN. Public view only.");
+        }
+      }
+    }
+
+    // Set today's date as default in form
+    document.getElementById('formReadDate').value = new Date().toISOString().split('T')[0];
+
+    async function fetchBooks() {
+      document.getElementById('loadingIndicator').classList.remove('hidden');
+      const { data, error } = await supabaseClient
+        .from('books')
+        .select('*')
+        .order('read_date', { ascending: false, nullsFirst: false });
+
+      document.getElementById('loadingIndicator').classList.add('hidden');
+
+      if (error) {
+        console.error('Error fetching books:', error);
+        alert('Could not sync with Supabase. Check console.');
+        return;
+      }
+
+      books = data || [];
+      populateFilters();
+      updateStats();
+      renderBooks();
+    }
+
+    function updateStats() {
+      const currentYearStr = new Date().getFullYear().toString();
+      const readBooks = books.filter(b => b.status === 'Read');
+      
+      const thisYearCount = readBooks.filter(b => {
+        if (!b.read_date) return false;
+        return b.read_date.startsWith(currentYearStr);
+      }).length;
+
+      document.getElementById('statLogged').innerText = readBooks.length;
+      document.getElementById('statThisYear').innerText = thisYearCount;
+    }
+
+    function populateFilters() {
+      const yearSelect = document.getElementById('filterYear');
+      const genreSelect = document.getElementById('filterGenre');
+
+      // Populate Years (Dynamic >= 2025 + any older or newer present)
+      const currentYear = new Date().getFullYear();
+      const yearsSet = new Set(['2025', currentYear.toString()]);
+      books.forEach(b => {
+        if (b.read_date) {
+          const y = b.read_date.split('-')[0];
+          if (y) yearsSet.add(y);
+        }
+      });
+      const sortedYears = Array.from(yearsSet).sort((a,b) => b.localeCompare(a));
+      
+      const currentValYear = yearSelect.value;
+      yearSelect.innerHTML = '<option value="all">All Years</option>' + sortedYears.map(y => `<option value="${y}">${y}</option>`).join('');
+      if (sortedYears.includes(currentValYear)) yearSelect.value = currentValYear;
+
+      // Populate Genres
+      const genresSet = new Set();
+      books.forEach(b => {
+        if (b.genre) genresSet.add(b.genre.trim());
+      });
+      const sortedGenres = Array.from(genresSet).sort();
+      const currentValGenre = genreSelect.value;
+      genreSelect.innerHTML = '<option value="all">All Genres</option>' + sortedGenres.map(g => `<option value="${g}">${g}</option>`).join('');
+      if (genresSet.has(currentValGenre)) genreSelect.value = currentValGenre;
+    }
+
+    function setViewMode(mode) {
+      currentView = mode;
+      const diaryBtn = document.getElementById('viewDiaryBtn');
+      const gridBtn = document.getElementById('viewGridBtn');
+      
+      if (mode === 'diary') {
+        diaryBtn.className = "px-2.5 py-1 text-xs rounded font-medium bg-[#2c3742] text-white transition";
+        gridBtn.className = "px-2.5 py-1 text-xs rounded font-medium text-[#678] hover:text-white transition";
+      } else {
+        gridBtn.className = "px-2.5 py-1 text-xs rounded font-medium bg-[#2c3742] text-white transition";
+        diaryBtn.className = "px-2.5 py-1 text-xs rounded font-medium text-[#678] hover:text-white transition";
+      }
+      renderBooks();
+    }
+
+    function renderBooks() {
+      const selectedYear = document.getElementById('filterYear').value;
+      const selectedStatus = document.getElementById('filterStatus').value;
+      const selectedGenre = document.getElementById('filterGenre').value;
+      const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+
+      const filtered = books.filter(b => {
+        if (selectedStatus !== 'all' && b.status !== selectedStatus) return false;
+        if (selectedGenre !== 'all' && b.genre !== selectedGenre) return false;
+        if (selectedYear !== 'all') {
+          if (!b.read_date || !b.read_date.startsWith(selectedYear)) return false;
+        }
+        if (searchQuery) {
+          const matchTitle = (b.title || '').toLowerCase().includes(searchQuery);
+          const matchAuthor = (b.author || '').toLowerCase().includes(searchQuery);
+          if (!matchTitle && !matchAuthor) return false;
+        }
+        return true;
+      });
+
+      const diaryEl = document.getElementById('diaryContainer');
+      const gridEl = document.getElementById('gridContainer');
+      const emptyEl = document.getElementById('emptyState');
+
+      if (filtered.length === 0) {
+        diaryEl.classList.add('hidden');
+        gridEl.classList.add('hidden');
+        emptyEl.classList.remove('hidden');
+        return;
+      }
+      emptyEl.classList.add('hidden');
+
+      if (currentView === 'diary') {
+        gridEl.classList.add('hidden');
+        diaryEl.classList.remove('hidden');
+        renderDiaryView(filtered, diaryEl);
+      } else {
+        diaryEl.classList.add('hidden');
+        gridEl.classList.remove('hidden');
+        renderGridView(filtered, gridEl);
+      }
+    }
+
+    function renderDiaryView(bookList, container) {
+      // Group by Month & Year
+      const groups = {};
+      bookList.forEach(b => {
+        let label = "NO DATE / SHELVED";
+        if (b.read_date) {
+          const parts = b.read_date.split('-');
+          const d = new Date(parts[0], parts[1] - 1, parts[2]);
+          label = d.toLocaleString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+        }
+        if (!groups[label]) groups[label] = [];
+        groups[label].push(b);
+      });
+
+      let html = '';
+      for (const [monthYear, items] of Object.entries(groups)) {
+        html += `
+          <div>
+            <h2 class="text-xs font-bold tracking-widest text-[#718290] uppercase pb-2 border-b border-[#242c34] mb-3">${monthYear}</h2>
+            <div class="divide-y divide-[#202830]">
+              ${items.map(b => {
+                const dayNum = b.read_date ? parseInt(b.read_date.split('-')[2], 10) : '—';
+                const defaultCover = `https://images.placeholders.dev/?width=120&height=180&text=${encodeURIComponent(b.title)}&bgColor=%231c252f&textColor=%2389a`;
+                const cover = b.cover_url || defaultCover;
+                return `
+                  <div onclick="showDetails('${b.id}')" class="py-3 flex items-center justify-between group hover:bg-[#182026] px-2 rounded-lg cursor-pointer transition">
+                    <div class="flex items-center gap-4">
+                      <!-- Day Box -->
+                      <div class="w-10 h-10 rounded border border-[#2b3540] bg-[#171e24] flex items-center justify-center font-bold text-sm text-[#89a] group-hover:text-white transition">
+                        ${dayNum}
+                      </div>
+                      
+                      <!-- Thumbnail Poster -->
+                      <div class="w-9 h-13 flex-shrink-0 rounded overflow-hidden shadow border border-[#2b3540]/60 bg-[#161d23]">
+                        <img src="${cover}" alt="${b.title}" class="w-full h-full object-cover" onerror="this.src='${defaultCover}'" />
+                      </div>
+
+                      <!-- Title & Subtitle -->
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm font-bold text-white group-hover:text-[#00e054] transition">${b.title}</span>
+                          ${b.pub_year ? `<span class="text-xs text-[#678]">${b.pub_year}</span>` : ''}
+                        </div>
+                        <p class="text-xs text-[#718290]">${b.author || 'Unknown Author'}</p>
+                      </div>
+                    </div>
+
+                    <!-- Right Metadata Tag -->
+                    <div class="flex items-center gap-3">
+                      ${b.notes ? `
+                        <span class="text-[#00e054] text-xs" title="Has Review">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
+                        </span>
+                      ` : ''}
+                      <span class="text-[11px] font-medium px-2 py-0.5 rounded border border-[#2c3742] bg-[#14181c] text-[#789]">
+                        ${b.status}
+                      </span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+    }
+
+    function renderGridView(bookList, container) {
+      container.innerHTML = bookList.map(b => {
+        const defaultCover = `https://images.placeholders.dev/?width=180&height=270&text=${encodeURIComponent(b.title)}&bgColor=%231c252f&textColor=%2389a`;
+        const cover = b.cover_url || defaultCover;
+        return `
+          <div onclick="showDetails('${b.id}')" class="group cursor-pointer">
+            <div class="aspect-[2/3] w-full rounded-md overflow-hidden bg-[#182026] border border-[#2b3540] group-hover:border-[#00e054] transition relative shadow-lg">
+              <img src="${cover}" alt="${b.title}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src='${defaultCover}'" />
+              <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent opacity-0 group-hover:opacity-100 transition p-2.5 flex flex-col justify-end">
+                <span class="text-[10px] uppercase font-bold text-[#00e054] tracking-wider">${b.genre || b.status}</span>
+                <p class="text-xs font-bold text-white line-clamp-1">${b.title}</p>
+                <p class="text-[11px] text-[#89a] line-clamp-1">${b.author}</p>
+              </div>
+            </div>
+            <p class="text-xs font-semibold text-white mt-1.5 line-clamp-1 group-hover:text-[#00e054] transition">${b.title}</p>
+            <p class="text-[11px] text-[#678] line-clamp-1">${b.author}</p>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showDetails(id) {
+      const b = books.find(x => x.id === id);
+      if (!b) return;
+
+      const defaultCover = `https://images.placeholders.dev/?width=200&height=300&text=${encodeURIComponent(b.title)}&bgColor=%231c252f&textColor=%2389a`;
+      const cover = b.cover_url || defaultCover;
+
+      const detailEl = document.getElementById('detailContent');
+      detailEl.innerHTML = `
+        <div class="flex gap-4">
+          <div class="w-24 h-36 flex-shrink-0 rounded overflow-hidden border border-[#2c3742] bg-[#14181c]">
+            <img src="${cover}" alt="${b.title}" class="w-full h-full object-cover" onerror="this.src='${defaultCover}'" />
+          </div>
+          <div class="flex-1">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-[#00e054] bg-[#00e054]/10 px-2 py-0.5 rounded border border-[#00e054]/20">${b.genre || 'General'}</span>
+            <h3 class="text-lg font-bold text-white mt-1.5 leading-snug">${b.title}</h3>
+            <p class="text-xs text-[#89a] mb-2">${b.author || 'Unknown'} ${b.pub_year ? `(${b.pub_year})` : ''}</p>
+            <div class="text-[11px] text-[#678] space-y-0.5">
+              <p>Status: <span class="text-white">${b.status}</span></p>
+              ${b.read_date ? `<p>Completed: <span class="text-white">${b.read_date}</span></p>` : ''}
+            </div>
+          </div>
+        </div>
+
+        ${b.notes ? `
+          <div class="mt-4 pt-3 border-t border-[#2c3742]">
+            <p class="text-[11px] font-bold uppercase tracking-wider text-[#678] mb-1">Notes & Takeaways</p>
+            <p class="text-xs text-[#bcd] italic bg-[#14181c] p-3 rounded border border-[#242c34] leading-relaxed">"${b.notes}"</p>
+          </div>
+        ` : ''}
+
+        ${isAdmin ? `
+          <div class="mt-5 pt-3 border-t border-[#2c3742] flex justify-end">
+            <button onclick="deleteBook('${b.id}')" class="text-xs text-red-400 hover:text-red-300 font-semibold transition flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              Delete Entry
+            </button>
+          </div>
+        ` : ''}
+      `;
+      document.getElementById('detailModal').classList.remove('hidden');
+      document.getElementById('detailModal').classList.add('flex');
+    }
+
+    function closeDetailModal() {
+      document.getElementById('detailModal').classList.add('hidden');
+      document.getElementById('detailModal').classList.remove('flex');
+    }
+
+    async function deleteBook(id) {
+      if (!confirm("Are you sure you want to remove this book?")) return;
+      const { error } = await supabaseClient.from('books').delete().eq('id', id);
+      if (error) {
+        alert("Failed to delete from database: " + error.message);
+        return;
+      }
+      closeDetailModal();
+      await fetchBooks();
+    }
+
+    function openModal() {
+      document.getElementById('bookModal').classList.remove('hidden');
+      document.getElementById('bookModal').classList.add('flex');
+    }
+
+    function closeModal() {
+      document.getElementById('bookModal').classList.add('hidden');
+      document.getElementById('bookModal').classList.remove('flex');
+      document.getElementById('apiSearchResults').classList.add('hidden');
+    }
+
+    function toggleDateField() {
+      const status = document.getElementById('formStatus').value;
+      const dateBox = document.getElementById('dateFieldContainer');
+      if (status !== 'Read') {
+        dateBox.classList.add('opacity-40');
+      } else {
+        dateBox.classList.remove('opacity-40');
+      }
+    }
+
+    // Open Library Live Auto-search
+    let searchDebounce;
+    function handleSearchApi(val) {
+      clearTimeout(searchDebounce);
+      const resultsBox = document.getElementById('apiSearchResults');
+      if (!val || val.length < 3) {
+        resultsBox.classList.add('hidden');
+        return;
+      }
+
+      searchDebounce = setTimeout(async () => {
+        try {
+          const res = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(val)}&limit=5`);
+          const data = await res.json();
+          if (data.docs && data.docs.length > 0) {
+            resultsBox.innerHTML = data.docs.map(item => {
+              const coverId = item.cover_i;
+              const imgUrl = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg` : '';
+              const author = item.author_name ? item.author_name[0] : 'Unknown';
+              const pubYear = item.first_publish_year || '';
+              const genre = item.subject ? item.subject[0] : '';
+              return `
+                <div onclick="selectApiBook('${encodeURIComponent(item.title)}', '${encodeURIComponent(author)}', '${pubYear}', '${encodeURIComponent(genre)}', '${imgUrl}')" class="p-2.5 hover:bg-[#1f2730] flex items-center gap-3 cursor-pointer transition">
+                  <div class="w-7 h-10 bg-[#242c34] rounded flex-shrink-0 overflow-hidden">
+                    ${imgUrl ? `<img src="${imgUrl}" class="w-full h-full object-cover"/>` : ''}
+                  </div>
+                  <div>
+                    <p class="text-xs font-bold text-white">${item.title}</p>
+                    <p class="text-[11px] text-[#789]">${author} ${pubYear ? `• ${pubYear}` : ''}</p>
+                  </div>
+                </div>
+              `;
+            }).join('');
+            resultsBox.classList.remove('hidden');
+          } else {
+            resultsBox.classList.add('hidden');
+          }
+        } catch(e) {
+          resultsBox.classList.add('hidden');
+        }
+      }, 350);
+    }
+
+    function selectApiBook(title, author, pubYear, genre, coverUrl) {
+      document.getElementById('formTitle').value = decodeURIComponent(title);
+      document.getElementById('formAuthor').value = decodeURIComponent(author);
+      document.getElementById('formPubYear').value = pubYear;
+      document.getElementById('formGenre').value = decodeURIComponent(genre);
+      document.getElementById('formCoverUrl').value = coverUrl;
+      document.getElementById('apiSearchResults').classList.add('hidden');
+    }
+
+    async function handleFormSubmit(e) {
+      e.preventDefault();
+      const saveBtn = document.getElementById('saveBookBtn');
+      saveBtn.disabled = true;
+      saveBtn.innerText = "Saving...";
+
+      const newBook = {
+        id: 'book_' + Date.now(),
+        title: document.getElementById('formTitle').value.trim(),
+        author: document.getElementById('formAuthor').value.trim(),
+        pub_year: document.getElementById('formPubYear').value.trim(),
+        genre: document.getElementById('formGenre').value.trim() || 'General',
+        status: document.getElementById('formStatus').value,
+        read_date: document.getElementById('formStatus').value === 'Read' ? (document.getElementById('formReadDate').value || null) : null,
+        cover_url: document.getElementById('formCoverUrl').value.trim(),
+        notes: document.getElementById('formNotes').value.trim()
+      };
+
+      const { error } = await supabaseClient.from('books').insert([newBook]);
+      saveBtn.disabled = false;
+      saveBtn.innerText = "Save Book";
+
+      if (error) {
+        alert("Failed to save to Supabase: " + error.message);
+        return;
+      }
+
+      e.target.reset();
+      document.getElementById('formReadDate').value = new Date().toISOString().split('T')[0];
+      closeModal();
+      await fetchBooks();
+    }
+
+    // Initial Load
+    fetchBooks();
+  </script>
+</body>
+</html>
