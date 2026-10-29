@@ -589,7 +589,7 @@
       saveBtn.innerText = "Saving...";
 
       const newBook = {
-        id: 'book_' + Date.now(),
+        id: Date.now(),
         title: document.getElementById('formTitle').value.trim(),
         author: document.getElementById('formAuthor').value.trim(),
         pub_year: document.getElementById('formPubYear').value.trim(),
